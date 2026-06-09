@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with role and real-time location data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["dispatch", "agent"] },
+        "displayName": { "type": "string" },
+        "lastPosition": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "updatedAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "isOnline": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "role"]
+    },
+    "Mission": {
+      "title": "Dispatch Mission",
+      "description": "A mission assigned to a field agent.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "vehicle": { "type": "string" },
+        "licensePlate": { "type": "string" },
+        "phone": { "type": "string" },
+        "compagnie": { "type": "string" },
+        "folderReference": { "type": "string" },
+        "incidentDate": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "assignedAgentId": { "type": "string" },
+        "dispatcherId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "in_progress", "completed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "vehicle", "location", "status", "dispatcherId"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Storage for user profiles and live locations."
+    },
+    "missions/{missionId}": {
+      "schema": "Mission",
+      "description": "Storage for mission details and status."
+    }
+  }
+}

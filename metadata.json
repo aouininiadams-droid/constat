@@ -1,0 +1,13 @@
+{
+  "name": "Maroc Assistance Internationale",
+  "description": "Plateforme professionnelle de dispatching et de gestion d'agents de terrain pour Maroc Assistance Internationale.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "majorCapabilities": [
+    "real_time_tracking",
+    "role_based_access_control",
+    "openstreetmap_leaflet_integration"
+  ]
+}

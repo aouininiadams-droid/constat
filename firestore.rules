@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isRole(uid, role) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(uid)) && 
+             get(/databases/$(database)/documents/users/$(uid)).data.get('role', '') == role;
+    }
+
+    function isDispatcher() {
+      // Prioritize static email check for the bootstrap administrator
+      // Note: We use .token.email as it is usually available in the auth object
+      return isSignedIn() && (
+        request.auth.token.email == 'aouininiadams@gmail.com' || 
+        isRole(request.auth.uid, 'dispatch')
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidStatus(status) {
+      return status in ['pending', 'accepted', 'in_progress', 'arrived', 'completed', 'cancelled'];
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidMission(data, isUpdate) {
+      // Basic core fields required for all missions
+      return data.keys().hasAll([
+        'customerName', 'vehicle', 'licensePlate', 'phone', 
+        'location', 'status'
+      ])
+      // Type checks
+      && data.customerName is string && data.customerName.size() <= 200
+      && data.vehicle is string && data.vehicle.size() <= 100
+      && data.licensePlate is string && data.licensePlate.size() <= 60
+      && data.phone is string && data.phone.size() <= 40
+      && (data.get('compagnie', null) == null || data.compagnie is string)
+      && (data.get('folderReference', null) == null || data.folderReference is string)
+      && (data.get('incidentDate', null) == null || data.incidentDate is string)
+      && data.location is map
+      && (data.get('assignedAgentId', null) == null || data.assignedAgentId is string)
+      && (data.get('dispatcherId', null) == null || data.dispatcherId is string)
+      && (data.get('status', '') in ['pending', 'accepted', 'in_progress', 'arrived', 'completed', 'cancelled']);
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'role', 'isOnline', 'createdAt'])
+      && data.userId == request.auth.uid
+      && (data.get('email', null) == null || data.email is string)
+      && data.role in ['dispatch', 'agent']
+      && data.isOnline is bool;
+    }
+
+    // --- Collection Matches ---
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isDispatcher();
+
+      allow create: if isSignedIn() && userId == request.auth.uid && isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() && (
+        // Self-update: Agents updating their position/status OR any user updating their profile info
+        (userId == request.auth.uid && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['lastPosition', 'isOnline', 'displayName', 'updatedAt', 'profileImage'])
+        )) || 
+        // Dispatcher update: Can change anything including roles (but beware of privilege escalation, usually admins do this)
+        isDispatcher()
+      );
+    }
+
+    // Missions Collection
+    match /missions/{missionId} {
+      // Relaxed read: As long as you are signed in, you can see missions. 
+      // Security is managed at the dispatch/agent filtering level in code.
+      allow read: if isSignedIn();
+
+      // Create: Only Dispatchers or Admin
+      allow create: if isDispatcher() 
+        && incoming().dispatcherId == request.auth.uid
+        && isValidMission(incoming(), false);
+
+      // Update: Action-Based logic
+      allow update: if isSignedIn() && (isDispatcher() || (
+        // Agent Actions: Must be assigned or accepting
+        (existing().status == 'pending' && incoming().status == 'in_progress' && incoming().assignedAgentId == request.auth.uid) ||
+        (existing().assignedAgentId == request.auth.uid)
+      )) && isValidMission(incoming(), true);
+
+      allow delete: if isDispatcher();
+    }
+  }
+}
